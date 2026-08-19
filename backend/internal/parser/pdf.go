@@ -18,7 +18,7 @@ type PDFParser struct{}
 func (PDFParser) Supports(fileType string) bool { return fileType == "pdf" }
 
 func (PDFParser) Parse(ctx context.Context, r io.Reader) (string, error) {
-	b, err := io.ReadAll(r)
+	b, err := readAllContext(ctx, r)
 	if err != nil {
 		return "", fmt.Errorf("read pdf: %w", err)
 	}
@@ -29,6 +29,9 @@ func (PDFParser) Parse(ctx context.Context, r io.Reader) (string, error) {
 	}
 	var buf bytes.Buffer
 	for i := 1; i <= f.NumPage(); i++ {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
 		page := f.Page(i)
 		if page.V.IsNull() {
 			continue
