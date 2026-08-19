@@ -1,0 +1,111 @@
+# docker-compose for the Enterprise Knowledge Q&A System.
+#
+# Brings up the full stack with one command: `docker compose up --build`.
+#   - postgres:  PostgreSQL + pgvector for relational + vector storage
+#   - redis:     cache / optional queue backend
+#   - minio:     S3-compatible object storage for uploaded documents
+#   - app:       the Go server (serves API + compiled SPA), built from Dockerfile
+#
+# Storage defaults to "local" and embedder/LLM default to "mock" so the system
+# runs without external API keys. Flip STORAGE_PROVIDER=minio / EMBEDDER_PROVIDER
+# / LLM_PROVIDER=openai and add keys to use real backends.
+name: kn-system
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: kn
+      POSTGRES_PASSWORD: kn
+      POSTGRES_DB: kn
+    ports:
+      - "5432:5432"
+    volumes:
+      - kn_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kn"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - kn_minio:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      APP_ENV: production
+      SERVER_PORT: "8080"
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+      DATABASE_USER: kn
+      DATABASE_PASSWORD: kn
+      DATABASE_NAME: kn
+      DATABASE_SSLMODE: disable
+      REDIS_ADDR: redis:6379
+      STORAGE_PROVIDER: local
+      STORAGE_LOCAL_DIR: /app/uploads
+      # To use MinIO instead of local files:
+      #   STORAGE_PROVIDER: minio
+      #   STORAGE_ENDPOINT: minio:9000
+      #   STORAGE_ACCESS_KEY: minioadmin
+      #   STORAGE_SECRET_KEY: minioadmin
+      #   STORAGE_BUCKET: kn-documents
+      #   STORAGE_USE_SSL: "false"
+      JWT_SECRET: change-me-in-production
+      JWT_EXPIRE_HOURS: "24"
+      EMBEDDER_PROVIDER: mock
+      # To use real OpenAI embeddings:
+      #   EMBEDDER_PROVIDER: openai
+      #   EMBEDDER_API_KEY: sk-...
+      #   EMBEDDER_MODEL: text-embedding-3-small
+      #   EMBEDDER_DIM: "1536"
+      LLM_PROVIDER: mock
+      # To use a real LLM:
+      #   LLM_PROVIDER: openai
+      #   LLM_API_KEY: sk-...
+      #   LLM_MODEL: gpt-4o-mini
+      QUEUE_PROVIDER: memory
+    ports:
+      - "8088:8080"
+    volumes:
+      # Persist uploaded documents across container rebuilds. The named volume
+      # inherits /app/uploads' ownership (uid 10001, set in the Dockerfile) on
+      # first use, so the non-root app user can write to it.
+      - kn_uploads:/app/uploads
+
+volumes:
+  kn_pg:
+  kn_minio:
+  kn_uploads:
