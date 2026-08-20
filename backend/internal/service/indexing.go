@@ -99,9 +99,9 @@ func (s *IndexingService) Process(ctx context.Context, job queue.Job) error {
 			Vector:     pgvector.NewVector(vec),
 		})
 	}
-	if err := s.docs.CreateChunks(ctx, chunks); err != nil {
+	if err := s.docs.ReplaceChunks(ctx, doc.ID, chunks); err != nil {
 		s.fail(ctx, doc.ID)
-		return fmt.Errorf("persist chunks: %w", err)
+		return fmt.Errorf("replace chunks: %w", err)
 	}
 	if err := s.docs.UpdateStatus(ctx, doc.ID, model.DocStatusIndexed, len(chunks)); err != nil {
 		return fmt.Errorf("mark indexed: %w", err)

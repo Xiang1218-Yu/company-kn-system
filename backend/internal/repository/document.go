@@ -82,6 +82,20 @@ func (r *DocumentRepo) CreateChunks(ctx context.Context, chunks []model.Chunk) e
 	})
 }
 
+// ReplaceChunks makes re-indexing idempotent: stale chunks are removed and the
+// newly parsed set is inserted in the same transaction.
+func (r *DocumentRepo) ReplaceChunks(ctx context.Context, docID uuid.UUID, chunks []model.Chunk) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("doc_id = ?", docID).Delete(&model.Chunk{}).Error; err != nil {
+			return err
+		}
+		if len(chunks) == 0 {
+			return nil
+		}
+		return tx.Create(&chunks).Error
+	})
+}
+
 // DeleteChunks removes a document's chunks; called when re-indexing or on delete.
 func (r *DocumentRepo) DeleteChunks(ctx context.Context, docID uuid.UUID) error {
 	return r.db.WithContext(ctx).Where("doc_id = ?", docID).Delete(&model.Chunk{}).Error
