@@ -49,3 +49,15 @@ type UnsupportedError struct{ FileType string }
 func (e *UnsupportedError) Error() string {
 	return "unsupported file type: " + e.FileType
 }
+
+// checkContext returns ctx.Err() if the context has already been cancelled. A
+// parser's first action must be to call this before touching its reader, so an
+// already-cancelled indexing job fails fast with the cancellation error and
+// never consumes the (potentially large) input stream. The same check is shared
+// by every parser so cancellation semantics do not diverge by file format.
+func checkContext(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return nil
+}

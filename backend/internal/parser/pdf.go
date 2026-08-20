@@ -18,6 +18,9 @@ type PDFParser struct{}
 func (PDFParser) Supports(fileType string) bool { return fileType == "pdf" }
 
 func (PDFParser) Parse(ctx context.Context, r io.Reader) (string, error) {
+	if err := checkContext(ctx); err != nil {
+		return "", err
+	}
 	b, err := io.ReadAll(r)
 	if err != nil {
 		return "", fmt.Errorf("read pdf: %w", err)

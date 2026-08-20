@@ -18,6 +18,9 @@ type DocxParser struct{}
 func (DocxParser) Supports(fileType string) bool { return fileType == "docx" }
 
 func (DocxParser) Parse(ctx context.Context, r io.Reader) (string, error) {
+	if err := checkContext(ctx); err != nil {
+		return "", err
+	}
 	b, err := io.ReadAll(r)
 	if err != nil {
 		return "", fmt.Errorf("read docx: %w", err)

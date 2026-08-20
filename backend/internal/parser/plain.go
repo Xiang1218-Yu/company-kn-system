@@ -20,6 +20,9 @@ func (PlainParser) Supports(fileType string) bool {
 }
 
 func (PlainParser) Parse(ctx context.Context, r io.Reader) (string, error) {
+	if err := checkContext(ctx); err != nil {
+		return "", err
+	}
 	b, err := io.ReadAll(r)
 	if err != nil {
 		return "", err
