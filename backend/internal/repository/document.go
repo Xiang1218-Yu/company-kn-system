@@ -55,6 +55,18 @@ func (r *DocumentRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	return r.db.WithContext(ctx).Delete(&model.Document{}, "id = ?", id).Error
 }
 
+// DeleteDocumentWithChunks removes a document and its chunks in one transaction.
+// Storage must have been removed before this runs, so a database failure is never
+// allowed to leave only a subset of the relational records behind.
+func (r *DocumentRepo) DeleteDocumentWithChunks(ctx context.Context, id uuid.UUID) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("doc_id = ?", id).Delete(&model.Chunk{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&model.Document{}, "id = ?", id).Error
+	})
+}
+
 // Search runs a lightweight full-text search over document names within a
 // knowledge base. It complements (not replaces) semantic search: keyword lookup
 // is fast for known terms, while vectors cover meaning.

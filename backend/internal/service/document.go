@@ -58,7 +58,7 @@ var AllowedTypes = map[string]bool{
 	"pdf":  true,
 	"docx": true,
 	"md":   true,
-	"txt":   true,
+	"txt":  true,
 }
 
 // Upload stores the file, creates the document record in pending status, and
@@ -143,11 +143,10 @@ func (s *DocumentService) Delete(ctx context.Context, id uuid.UUID) error {
 	// If the storage delete fails we still remove the DB record so the user is
 	// not left with an orphan document pointing at a deleted file; the object
 	// is best-effort reaped later.
-	if err := s.docs.DeleteChunks(ctx, id); err != nil {
-		return apperr.Wrap(apperr.KindInternal, "delete chunks", err)
+	if err := s.storage.Delete(ctx, d.FilePath); err != nil {
+		return apperr.Wrap(apperr.KindInternal, "delete stored file", err)
 	}
-	_ = s.storage.Delete(ctx, d.FilePath)
-	if err := s.docs.Delete(ctx, id); err != nil {
+	if err := s.docs.DeleteDocumentWithChunks(ctx, id); err != nil {
 		return apperr.Wrap(apperr.KindInternal, "delete document", err)
 	}
 	return nil
