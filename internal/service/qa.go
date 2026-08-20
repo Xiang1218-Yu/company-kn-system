@@ -129,10 +129,10 @@ func (s *QAService) buildMessages(question, contextBlock string, history [][2]st
 			Content: "以下是检索到的知识库片段：\n\n" + contextBlock,
 		})
 	}
-	// Replay history for follow-up continuity.
-	// BUG: replaying turns newest-first breaks the causal order of follow-ups.
-	for i := len(history) - 1; i >= 0; i-- {
-		h := history[i]
+	// Replay history for follow-up continuity. Iterate oldest→newest so
+	// the model reads each prior question before the answer it prompted,
+	// preserving the causal order of the conversation up to the current turn.
+	for _, h := range history {
 		msgs = append(msgs,
 			llm.Message{Role: "user", Content: h[0]},
 			llm.Message{Role: "assistant", Content: h[1]},

@@ -55,9 +55,11 @@ func (h *QAHandler) Ask(c *gin.Context) {
 
 	history := make([][2]string, 0, len(req.History))
 	for _, t := range req.History {
-		// BUG: the ingress swaps each conversational turn, so the model sees
-		// an answer as a user question and the original question as the reply.
-		history = append(history, [2]string{t.Answer, t.Question})
+		// Each pair must be user→assistant so the model reads the prior
+		// question as the user turn and the prior answer as the assistant
+		// turn. The frontend sends {question, answer} in oldest→newest order,
+		// which we forward unchanged.
+		history = append(history, [2]string{t.Question, t.Answer})
 	}
 
 	if c.GetHeader("Accept") == "text/event-stream" {
