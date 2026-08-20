@@ -52,10 +52,8 @@ func (s *AuthService) Register(ctx context.Context, in RegisterInput) (model.Use
 	if in.Role == "" {
 		in.Role = model.RoleMember
 	}
-	switch in.Role {
-	case model.RoleAdmin, model.RoleManager, model.RoleMember:
-	default:
-		return model.User{}, "", apperr.New(apperr.KindValidation, "invalid role")
+	if in.Role != model.RoleMember {
+		return model.User{}, "", apperr.New(apperr.KindForbidden, "public registration cannot assign privileged roles")
 	}
 
 	if existing, _ := s.users.FindByEmail(ctx, in.Email); existing != nil {

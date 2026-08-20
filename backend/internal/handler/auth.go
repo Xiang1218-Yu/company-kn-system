@@ -34,7 +34,8 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 	user, token, err := h.svc.Register(c.Request.Context(), service.RegisterInput{
-		Email: req.Email, Password: req.Password, Name: req.Name, Role: model.Role(req.Role),
+		Email: req.Email, Password: req.Password, Name: req.Name,
+		Role: model.RoleMember,
 	})
 	if err != nil {
 		emit(c, err)
