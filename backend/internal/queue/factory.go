@@ -6,6 +6,12 @@ import "errors"
 // map it to a transient failure the user can retry from the document list.
 var ErrFull = errors.New("queue: full")
 
+// ErrNotRunning is returned when a job is enqueued while the queue is stopped.
+// Submitting after Stop must surface a recognizable error rather than panic on
+// a closed channel, and it lets the caller distinguish "queue down" from a
+// transient full buffer.
+var ErrNotRunning = errors.New("queue: not running")
+
 // New selects a queue backend. Only "memory" is implemented here; "redis" is
 // reserved for when horizontal scaling is required and the interface lets that
 // be added without touching the service layer.
