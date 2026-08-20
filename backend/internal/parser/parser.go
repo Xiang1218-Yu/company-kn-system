@@ -49,3 +49,12 @@ type UnsupportedError struct{ FileType string }
 func (e *UnsupportedError) Error() string {
 	return "unsupported file type: " + e.FileType
 }
+
+// readAllContext avoids consuming an input stream when the caller has already
+// cancelled the indexing operation.
+func readAllContext(ctx context.Context, r io.Reader) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return io.ReadAll(r)
+}
