@@ -24,7 +24,11 @@ func NewDashboardHandler(svc *service.DashboardService) *DashboardHandler {
 func (h *DashboardHandler) Load(c *gin.Context) {
 	// Enforce manager-or-above here too, as defence in depth alongside the
 	// route-level RequireRole.
-	u, _ := middleware.CurrentUser(c)
+	u, ok := middleware.CurrentUser(c)
+	if !ok {
+		response.Unauthorized(c, "not authenticated")
+		return
+	}
 	if u.Role != model.RoleAdmin && u.Role != model.RoleManager {
 		response.Forbidden(c, "insufficient permissions")
 		return

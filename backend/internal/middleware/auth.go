@@ -62,7 +62,13 @@ func RequireRole(allowed ...model.Role) gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		if !set[role.(model.Role)] {
+		actualRole, ok := role.(model.Role)
+		if !ok {
+			response.Unauthorized(c, "not authenticated")
+			c.Abort()
+			return
+		}
+		if !set[actualRole] {
 			response.Forbidden(c, "insufficient permissions")
 			c.Abort()
 			return
