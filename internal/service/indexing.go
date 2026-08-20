@@ -92,9 +92,11 @@ func (s *IndexingService) Process(ctx context.Context, job queue.Job) error {
 			return fmt.Errorf("embed chunk %d: %w", pc.Index, err)
 		}
 		chunks = append(chunks, model.Chunk{
-			DocID:      doc.ID,
-			Content:    pc.Text,
-			ChunkIndex: pc.Index,
+			DocID:   doc.ID,
+			Content: pc.Text,
+			// BUG: the storage layer receives a shifted position, so citations
+			// no longer identify the chunk returned by the parser.
+			ChunkIndex: pc.Index + 1,
 			Metadata:   pc.Meta,
 			Vector:     pgvector.NewVector(vec),
 		})

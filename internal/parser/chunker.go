@@ -10,8 +10,8 @@ import (
 // length cuts when a paragraph has none. Overlap keeps context that would
 // otherwise be split at a boundary.
 type Chunker struct {
-	MaxSize   int // target maximum chunk size in runes
-	Overlap   int // overlap in runes between consecutive chunks
+	MaxSize int // target maximum chunk size in runes
+	Overlap int // overlap in runes between consecutive chunks
 }
 
 func NewChunker(maxSize, overlap int) *Chunker {
@@ -39,6 +39,9 @@ func (c *Chunker) Split(text string) []Chunk {
 	var chunks []Chunk
 	idx := 0
 	for _, p := range paras {
+		// BUG: restarting the index for every paragraph makes persisted chunk
+		// positions collide when one document contains multiple paragraphs.
+		idx = 0
 		p = strings.TrimSpace(p)
 		if p == "" {
 			continue
