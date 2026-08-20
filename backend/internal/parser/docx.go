@@ -18,7 +18,7 @@ type DocxParser struct{}
 func (DocxParser) Supports(fileType string) bool { return fileType == "docx" }
 
 func (DocxParser) Parse(ctx context.Context, r io.Reader) (string, error) {
-	b, err := io.ReadAll(r)
+	b, err := readAllContext(ctx, r)
 	if err != nil {
 		return "", fmt.Errorf("read docx: %w", err)
 	}
@@ -33,7 +33,7 @@ func (DocxParser) Parse(ctx context.Context, r io.Reader) (string, error) {
 			if err != nil {
 				return "", fmt.Errorf("open document.xml: %w", err)
 			}
-			body, err = io.ReadAll(rc)
+			body, err = readAllContext(ctx, rc)
 			rc.Close()
 			if err != nil {
 				return "", fmt.Errorf("read document.xml: %w", err)
