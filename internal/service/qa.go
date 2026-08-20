@@ -9,8 +9,8 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	apperr "kn-system/internal/errors"
 	"kn-system/internal/embedder"
+	apperr "kn-system/internal/errors"
 	"kn-system/internal/llm"
 	"kn-system/internal/model"
 	"kn-system/internal/repository"
@@ -21,11 +21,11 @@ import (
 // assemble a prompt with citations, and stream the LLM's answer back. It also
 // persists the Q&A log for history and dashboard metrics.
 type QAService struct {
-	docs    *repository.DocumentRepo
-	qa      *repository.QARepo
-	emb     embedder.Embedder
-	llm     llm.LLM
-	topK    int
+	docs *repository.DocumentRepo
+	qa   *repository.QARepo
+	emb  embedder.Embedder
+	llm  llm.LLM
+	topK int
 }
 
 func NewQAService(
@@ -125,12 +125,14 @@ func (s *QAService) buildMessages(question, contextBlock string, history [][2]st
 	msgs = append(msgs, llm.Message{Role: "system", Content: sys})
 	if contextBlock != "" {
 		msgs = append(msgs, llm.Message{
-			Role: "system",
+			Role:    "system",
 			Content: "以下是检索到的知识库片段：\n\n" + contextBlock,
 		})
 	}
 	// Replay history for follow-up continuity.
-	for _, h := range history {
+	// BUG: replaying turns newest-first breaks the causal order of follow-ups.
+	for i := len(history) - 1; i >= 0; i-- {
+		h := history[i]
 		msgs = append(msgs,
 			llm.Message{Role: "user", Content: h[0]},
 			llm.Message{Role: "assistant", Content: h[1]},
