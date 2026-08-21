@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -58,7 +59,7 @@ var AllowedTypes = map[string]bool{
 	"pdf":  true,
 	"docx": true,
 	"md":   true,
-	"txt":   true,
+	"txt":  true,
 }
 
 // Upload stores the file, creates the document record in pending status, and
@@ -111,6 +112,9 @@ func (s *DocumentService) Upload(ctx context.Context, kbID, userID uuid.UUID, fh
 		// Enqueue failure is recorded on the document so the user can see the
 		// problem and retry, rather than leaving it forever "pending".
 		_ = s.docs.UpdateStatus(ctx, docID, model.DocStatusFailed, 0)
+		if errors.Is(err, queue.ErrStopping) {
+			return nil, apperr.Wrap(apperr.KindInternal, "index queue stopping", err)
+		}
 		return nil, apperr.Wrap(apperr.KindInternal, "enqueue indexing", err)
 	}
 	return doc, nil

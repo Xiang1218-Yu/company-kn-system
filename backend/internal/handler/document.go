@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"kn-system/internal/middleware"
+	"kn-system/internal/queue"
 	"kn-system/internal/service"
 	"kn-system/pkg/response"
 )
@@ -46,6 +48,10 @@ func (h *DocumentHandler) Upload(c *gin.Context) {
 	}
 	doc, err := h.svc.Upload(c.Request.Context(), kbID, u.ID, file)
 	if err != nil {
+		if errors.Is(err, queue.ErrStopping) {
+			response.Fail(c, http.StatusServiceUnavailable, "QUEUE_STOPPING", "index queue is stopping")
+			return
+		}
 		emit(c, err)
 		return
 	}
