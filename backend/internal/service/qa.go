@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -66,11 +67,11 @@ func (s *QAService) RetrieveAndBuildPrompt(ctx context.Context, in AskInput) (st
 	if strings.TrimSpace(in.Question) == "" {
 		return "", nil, nil, apperr.New(apperr.KindValidation, "question is empty")
 	}
-	qVec, err := s.emb.Embed(context.Background(), in.Question)
+	qVec, err := s.emb.Embed(ctx, in.Question)
 	if err != nil {
 		return "", nil, nil, apperr.Wrap(apperr.KindInternal, "embed question", err)
 	}
-	chunks, err := s.docs.RetrieveByVector(context.Background(), in.KbID, qVec, s.topK)
+	chunks, err := s.docs.RetrieveByVector(ctx, in.KbID, qVec, s.topK)
 	if err != nil {
 		return "", nil, nil, apperr.Wrap(apperr.KindInternal, "retrieve chunks", err)
 	}
@@ -148,12 +149,24 @@ func (s *QAService) Ask(ctx context.Context, in AskInput) (AskResult, error) {
 	if err != nil {
 		return AskResult{}, err
 	}
-	answer, err := s.llm.Complete(context.Background(), messages)
+	answer, err := s.llm.Complete(ctx, messages)
 	if err != nil {
+		// A canceled request is not a server failure: the client went away (or
+		// the deadline elapsed). Stop without persisting a fabricated answer so
+		// we never record a canceled exchange as a real one.
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return AskResult{}, err
+		}
 		// Degrade gracefully: never leak provider errors; surface a friendly
 		// retry message per the availability non-functional requirement.
 		answer = "服务繁忙，请稍后重试。"
 		logger.L.Error("llm complete failed, returning degraded answer", zap.Error(err))
+	}
+	// If the client disconnected mid-answer there is nothing useful to persist
+	// — the answer never completed. Guard once more so a cancellation that
+	// raced in just after Complete returned is not recorded as a real answer.
+	if ctx.Err() != nil {
+		return AskResult{}, ctx.Err()
 	}
 	log := &model.QALog{
 		UserID:       in.UserID,
@@ -180,11 +193,17 @@ func (s *QAService) StreamAnswer(ctx context.Context, in AskInput, onToken func(
 		return AskResult{}, err
 	}
 	var b strings.Builder
-	streamErr := s.llm.Stream(context.Background(), messages, func(tok string) {
+	streamErr := s.llm.Stream(ctx, messages, func(tok string) {
 		b.WriteString(tok)
 		onToken(tok)
 	})
 	answer := b.String()
+	// A canceled request means the client went away (or the deadline elapsed).
+	// Stop promptly and return the cancel error; do not persist a partial or
+	// fabricated answer as if it were a completed exchange.
+	if streamErr != nil && (errors.Is(streamErr, context.Canceled) || errors.Is(streamErr, context.DeadlineExceeded)) {
+		return AskResult{}, streamErr
+	}
 	if streamErr != nil {
 		// If the stream failed partway, still record what we have and append
 		// the degradation note so the saved log is honest.
@@ -192,6 +211,11 @@ func (s *QAService) StreamAnswer(ctx context.Context, in AskInput, onToken func(
 			answer = "服务繁忙，请稍后重试。"
 		}
 		logger.L.Error("llm stream failed", zap.Error(streamErr))
+	}
+	// Guard against a cancellation that raced in just after the stream closed:
+	// don't record a partial answer as a completed one.
+	if ctx.Err() != nil {
+		return AskResult{}, ctx.Err()
 	}
 	log := &model.QALog{
 		UserID:       in.UserID,

@@ -142,6 +142,17 @@ func (c *Client) ChatStream(ctx context.Context, model string, messages []ChatMe
 	}
 	dec := json.NewDecoder(resp.Body)
 	for {
+		// Honor cancellation mid-stream: decoding the SSE body blocks on the
+		// provider, so without this check a canceled request keeps draining
+		// tokens until the upstream closes the connection. The request itself
+		// is already bound to ctx, so once ctx is canceled the underlying
+		// transport aborts; this select lets us stop promptly even when bytes
+		// are still arriving.
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 		var ev struct {
 			Choices []struct {
 				Delta struct {
@@ -164,7 +175,18 @@ func (c *Client) ChatStream(ctx context.Context, model string, messages []ChatMe
 }
 
 func (c *Client) post(ctx context.Context, path string, body []byte) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, c.baseURL+path, bytes.NewReader(body))
+	// Bail out before any HTTP work when the caller already canceled. The
+	// request is bound to ctx below, but net/http only aborts an in-flight
+	// transport call asynchronously — a synchronously completing transport (or a
+	// provider that responds within the same tick) can return before the
+	// cancellation watcher fires. Checking ctx up front makes cancellation
+	// prompt and observable: no outbound request is made for an already-canceled
+	// call, and the returned error is the canceled context so callers can
+	// recognize it.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}

@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -66,8 +67,10 @@ func (h *QAHandler) Ask(c *gin.Context) {
 		return
 	}
 
-	// Non-streaming fallback: one shot.
-	res, err := h.svc.Ask(context.Background(), service.AskInput{
+	// Non-streaming fallback: one shot. The request context is threaded all the
+	// way down so a client disconnect or request timeout cancels the embed,
+	// retrieval, and model calls instead of letting them run to completion.
+	res, err := h.svc.Ask(c.Request.Context(), service.AskInput{
 		UserID: u.ID, KbID: kbID, Question: req.Question, History: history,
 	})
 	if err != nil {
@@ -90,7 +93,7 @@ func (h *QAHandler) streamAnswer(c *gin.Context, in service.AskInput) {
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
 		// No streaming support: degrade to the non-streaming path.
-		res, err := h.svc.Ask(context.Background(), in)
+		res, err := h.svc.Ask(c.Request.Context(), in)
 		if err != nil {
 			emit(c, err)
 			return
@@ -100,15 +103,27 @@ func (h *QAHandler) streamAnswer(c *gin.Context, in service.AskInput) {
 		return
 	}
 
-	res, err := h.svc.StreamAnswer(context.Background(), in, func(tok string) {
-		writeSSE(c.Writer, "delta", tok)
-		if flusher != nil {
-			flusher.Flush()
+	// Thread the request context through so a client disconnect, connection
+	// close, or request timeout propagates to the embed/retrieve/LLM calls and
+	// aborts them promptly. The onToken callback also short-circuits once the
+	// context is canceled, so we stop flushing to a client that is already gone.
+	ctx := c.Request.Context()
+	res, err := h.svc.StreamAnswer(ctx, in, func(tok string) {
+		select {
+		case <-ctx.Done():
+			return
+		default:
 		}
+		writeSSE(c.Writer, "delta", tok)
+		flusher.Flush()
 	})
 	if err != nil {
-		// Surface the error as a terminal SSE event so the client can render it.
-		writeSSE(c.Writer, "error", gin.H{"message": "stream failed"})
+		// Cancellation is expected when the client disconnects; there is no
+		// useful error event to send to a client that has already gone away.
+		// Surface other failures as a terminal SSE event.
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+			writeSSE(c.Writer, "error", gin.H{"message": "stream failed"})
+		}
 		return
 	}
 	writeSSE(c.Writer, "done", res)
