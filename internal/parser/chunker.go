@@ -37,11 +37,13 @@ type Chunk struct {
 func (c *Chunker) Split(text string) []Chunk {
 	paras := splitParagraphs(text)
 	var chunks []Chunk
+	// idx is the global, document-wide chunk position. It is never reset
+	// between paragraphs, so every chunk across a multi-paragraph document
+	// (and across the pieces of a long paragraph) gets a unique, contiguous
+	// position that matches what the indexing service persists. Resetting it
+	// per paragraph would make positions collide and break citation ordering.
 	idx := 0
 	for _, p := range paras {
-		// BUG: restarting the index for every paragraph makes persisted chunk
-		// positions collide when one document contains multiple paragraphs.
-		idx = 0
 		p = strings.TrimSpace(p)
 		if p == "" {
 			continue

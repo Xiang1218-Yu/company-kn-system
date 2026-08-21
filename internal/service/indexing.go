@@ -81,7 +81,21 @@ func (s *IndexingService) Process(ctx context.Context, job queue.Job) error {
 	if len(pieces) == 0 {
 		// An empty/whitespace document produces no chunks; mark indexed with
 		// zero so the user sees a clean success rather than a hanging pending.
+		// Still clear any stale chunks so a re-index after a content change
+		// never leaves orphaned fragments behind.
+		if err := s.docs.DeleteChunks(ctx, doc.ID); err != nil {
+			return fmt.Errorf("clear chunks: %w", err)
+		}
 		return s.docs.UpdateStatus(ctx, doc.ID, model.DocStatusIndexed, 0)
+	}
+
+	// Drop any previously-persisted chunks before inserting the fresh set. This
+	// makes Process idempotent under re-indexing/retry: without it, CreateChunks
+	// appends to the old rows and the same document ends up with duplicate
+	// chunk_index values, so citations can no longer map back to one position.
+	if err := s.docs.DeleteChunks(ctx, doc.ID); err != nil {
+		s.fail(ctx, doc.ID)
+		return fmt.Errorf("clear chunks: %w", err)
 	}
 
 	chunks := make([]model.Chunk, 0, len(pieces))
@@ -94,9 +108,11 @@ func (s *IndexingService) Process(ctx context.Context, job queue.Job) error {
 		chunks = append(chunks, model.Chunk{
 			DocID:   doc.ID,
 			Content: pc.Text,
-			// BUG: the storage layer receives a shifted position, so citations
-			// no longer identify the chunk returned by the parser.
-			ChunkIndex: pc.Index + 1,
+			// Preserve the parser's global position verbatim. The chunker
+			// already guarantees unique, contiguous, 0-based indexes across the
+			// whole document, so the stored chunk_index must equal pc.Index —
+			// any shift here desyncs the citation number from the source text.
+			ChunkIndex: pc.Index,
 			Metadata:   pc.Meta,
 			Vector:     pgvector.NewVector(vec),
 		})
