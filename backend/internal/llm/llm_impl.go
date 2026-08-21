@@ -71,7 +71,7 @@ func (l *OpenAILLM) Complete(ctx context.Context, messages []Message) (string, e
 	for i, m := range messages {
 		om[i] = openai.ChatMessage{Role: m.Role, Content: m.Content}
 	}
-	choice, err := l.client.Chat(ctx, l.model, om)
+	choice, err := l.client.Chat(context.Background(), l.model, om)
 	if err != nil {
 		return "", err
 	}
@@ -83,7 +83,7 @@ func (l *OpenAILLM) Stream(ctx context.Context, messages []Message, onToken func
 	for i, m := range messages {
 		om[i] = openai.ChatMessage{Role: m.Role, Content: m.Content}
 	}
-	return l.client.ChatStream(ctx, l.model, om, onToken)
+	return l.client.ChatStream(context.Background(), l.model, om, onToken)
 }
 
 // New selects the configured LLM. Defaulting to mock keeps the system runnable

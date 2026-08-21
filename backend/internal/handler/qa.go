@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -66,7 +67,7 @@ func (h *QAHandler) Ask(c *gin.Context) {
 	}
 
 	// Non-streaming fallback: one shot.
-	res, err := h.svc.Ask(c.Request.Context(), service.AskInput{
+	res, err := h.svc.Ask(context.Background(), service.AskInput{
 		UserID: u.ID, KbID: kbID, Question: req.Question, History: history,
 	})
 	if err != nil {
@@ -89,7 +90,7 @@ func (h *QAHandler) streamAnswer(c *gin.Context, in service.AskInput) {
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
 		// No streaming support: degrade to the non-streaming path.
-		res, err := h.svc.Ask(c.Request.Context(), in)
+		res, err := h.svc.Ask(context.Background(), in)
 		if err != nil {
 			emit(c, err)
 			return
@@ -99,7 +100,7 @@ func (h *QAHandler) streamAnswer(c *gin.Context, in service.AskInput) {
 		return
 	}
 
-	res, err := h.svc.StreamAnswer(c.Request.Context(), in, func(tok string) {
+	res, err := h.svc.StreamAnswer(context.Background(), in, func(tok string) {
 		writeSSE(c.Writer, "delta", tok)
 		if flusher != nil {
 			flusher.Flush()

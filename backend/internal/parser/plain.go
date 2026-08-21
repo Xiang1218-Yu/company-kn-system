@@ -20,7 +20,7 @@ func (PlainParser) Supports(fileType string) bool {
 }
 
 func (PlainParser) Parse(ctx context.Context, r io.Reader) (string, error) {
-	b, err := io.ReadAll(r)
+	b, err := readAllContext(ctx, r)
 	if err != nil {
 		return "", err
 	}

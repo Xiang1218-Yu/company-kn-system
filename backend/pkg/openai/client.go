@@ -39,8 +39,8 @@ func New(apiKey, baseURL string) (*Client, error) {
 
 // EmbedRequest is the body for /embeddings.
 type EmbedRequest struct {
-	Model string   `json:"model"`
-	Input string   `json:"input"`
+	Model string `json:"model"`
+	Input string `json:"input"`
 }
 
 // EmbedResponse carries the returned vector(s).
@@ -164,7 +164,7 @@ func (c *Client) ChatStream(ctx context.Context, model string, messages []ChatMe
 }
 
 func (c *Client) post(ctx context.Context, path string, body []byte) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, c.baseURL+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}

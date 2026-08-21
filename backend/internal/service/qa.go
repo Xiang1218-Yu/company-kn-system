@@ -9,8 +9,8 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	apperr "kn-system/internal/errors"
 	"kn-system/internal/embedder"
+	apperr "kn-system/internal/errors"
 	"kn-system/internal/llm"
 	"kn-system/internal/model"
 	"kn-system/internal/repository"
@@ -21,11 +21,11 @@ import (
 // assemble a prompt with citations, and stream the LLM's answer back. It also
 // persists the Q&A log for history and dashboard metrics.
 type QAService struct {
-	docs    *repository.DocumentRepo
-	qa      *repository.QARepo
-	emb     embedder.Embedder
-	llm     llm.LLM
-	topK    int
+	docs *repository.DocumentRepo
+	qa   *repository.QARepo
+	emb  embedder.Embedder
+	llm  llm.LLM
+	topK int
 }
 
 func NewQAService(
@@ -66,11 +66,11 @@ func (s *QAService) RetrieveAndBuildPrompt(ctx context.Context, in AskInput) (st
 	if strings.TrimSpace(in.Question) == "" {
 		return "", nil, nil, apperr.New(apperr.KindValidation, "question is empty")
 	}
-	qVec, err := s.emb.Embed(ctx, in.Question)
+	qVec, err := s.emb.Embed(context.Background(), in.Question)
 	if err != nil {
 		return "", nil, nil, apperr.Wrap(apperr.KindInternal, "embed question", err)
 	}
-	chunks, err := s.docs.RetrieveByVector(ctx, in.KbID, qVec, s.topK)
+	chunks, err := s.docs.RetrieveByVector(context.Background(), in.KbID, qVec, s.topK)
 	if err != nil {
 		return "", nil, nil, apperr.Wrap(apperr.KindInternal, "retrieve chunks", err)
 	}
@@ -125,7 +125,7 @@ func (s *QAService) buildMessages(question, contextBlock string, history [][2]st
 	msgs = append(msgs, llm.Message{Role: "system", Content: sys})
 	if contextBlock != "" {
 		msgs = append(msgs, llm.Message{
-			Role: "system",
+			Role:    "system",
 			Content: "以下是检索到的知识库片段：\n\n" + contextBlock,
 		})
 	}
@@ -148,7 +148,7 @@ func (s *QAService) Ask(ctx context.Context, in AskInput) (AskResult, error) {
 	if err != nil {
 		return AskResult{}, err
 	}
-	answer, err := s.llm.Complete(ctx, messages)
+	answer, err := s.llm.Complete(context.Background(), messages)
 	if err != nil {
 		// Degrade gracefully: never leak provider errors; surface a friendly
 		// retry message per the availability non-functional requirement.
@@ -180,7 +180,7 @@ func (s *QAService) StreamAnswer(ctx context.Context, in AskInput, onToken func(
 		return AskResult{}, err
 	}
 	var b strings.Builder
-	streamErr := s.llm.Stream(ctx, messages, func(tok string) {
+	streamErr := s.llm.Stream(context.Background(), messages, func(tok string) {
 		b.WriteString(tok)
 		onToken(tok)
 	})

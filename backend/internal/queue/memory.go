@@ -32,7 +32,6 @@ func NewMemory(processor Processor, concurrency int) *MemoryQueue {
 	}
 	return &MemoryQueue{
 		processor: processor,
-		jobs:      make(chan Job, 1024),
 		conc:      concurrency,
 	}
 }
@@ -44,19 +43,26 @@ func (q *MemoryQueue) Start(ctx context.Context) error {
 		return nil
 	}
 	ctx, cancel := context.WithCancel(ctx)
+	q.jobs = make(chan Job, 1024)
 	q.cancel = cancel
 	q.started = true
+	jobs := q.jobs
 	q.mu.Unlock()
 
 	for i := 0; i < q.conc; i++ {
 		q.wg.Add(1)
-		go q.worker(ctx)
+		go q.worker(ctx, jobs)
 	}
 	logger.L.Info("index queue started", zap.Int("workers", q.conc))
 	return nil
 }
 
 func (q *MemoryQueue) Enqueue(ctx context.Context, job Job) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if !q.started || q.jobs == nil {
+		return ErrNotRunning
+	}
 	select {
 	case q.jobs <- job:
 		return nil
@@ -71,11 +77,19 @@ func (q *MemoryQueue) Enqueue(ctx context.Context, job Job) error {
 
 func (q *MemoryQueue) Stop() error {
 	q.mu.Lock()
-	if q.cancel != nil {
-		q.cancel()
+	if !q.started {
+		q.mu.Unlock()
+		return nil
 	}
-	close(q.jobs)
+	cancel := q.cancel
+	jobs := q.jobs
+	q.cancel = nil
+	q.jobs = nil
 	q.started = false
+	if cancel != nil {
+		cancel()
+	}
+	close(jobs)
 	q.mu.Unlock()
 	q.wg.Wait()
 	return nil
@@ -84,10 +98,10 @@ func (q *MemoryQueue) Stop() error {
 // worker drains jobs until the context is cancelled. Each job is retried up to
 // maxRetries times (per the non-functional requirement of 3 retries); after
 // that the processor records the failure on the document.
-func (q *MemoryQueue) worker(ctx context.Context) {
+func (q *MemoryQueue) worker(ctx context.Context, jobs <-chan Job) {
 	defer q.wg.Done()
 	const maxRetries = 3
-	for job := range q.jobs {
+	for job := range jobs {
 		var err error
 		for attempt := 1; attempt <= maxRetries; attempt++ {
 			if err = q.processor.Process(ctx, job); err == nil {
