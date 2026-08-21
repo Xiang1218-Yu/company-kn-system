@@ -14,9 +14,9 @@ RUN npm run build
 # compiled frontend.
 FROM golang:1.26-alpine AS backend
 WORKDIR /app
-COPY backend/go.mod backend/go.sum ./
+COPY go.mod go.sum ./
 RUN go mod download
-COPY backend/ ./
+COPY . ./
 # CGO is disabled so the binary is fully static and runs on the scratch-like
 # final image without a C toolchain.
 RUN CGO_ENABLED=0 go build -o /out/kn-server ./cmd/server
